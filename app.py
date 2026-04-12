@@ -100,7 +100,10 @@ def background_loop():
                 shared_state['cpu_optimized'] = shared_state['cpu_optimized'][-30:]
 
         except Exception as e:
+            # Print the full error with traceback so it's easy to debug
+            import traceback
             print(f"[Background] Error: {e}")
+            traceback.print_exc()
 
         time.sleep(5)   # Poll every 5 seconds
 
