@@ -166,23 +166,47 @@ class QLearningScheduler:
 
     def apply_action(self, pid, action_id, current_nice):
         """
-        Actually change the process nice value on Linux.
-        Returns the new nice value (or current if failed).
+        Change process priority — works on BOTH Windows and Linux.
+
+        Linux  : uses integer nice values (-20 to +19)
+        Windows: uses psutil priority class constants
+                 IDLE < BELOW_NORMAL < NORMAL < ABOVE_NORMAL < HIGH
+        Returns the new nice value (or current if failed / no change).
         """
+        import sys
         try:
             proc = psutil.Process(pid)
-            if action_id == 0:   # increase priority → lower nice
-                new_nice = max(-10, current_nice - 5)   # clamp at -10 for safety
-            elif action_id == 1: # decrease priority → raise nice
-                new_nice = min(15, current_nice + 5)    # clamp at +15
-            else:                # keep
-                new_nice = current_nice
 
-            if new_nice != current_nice:
-                proc.nice(new_nice)   # Linux: requires sudo for negative values
+            # ── Calculate new nice value (used for display on all platforms) ──
+            if action_id == 0:       # increase priority
+                new_nice = max(-10, current_nice - 5)
+            elif action_id == 1:     # decrease priority
+                new_nice = min(15, current_nice + 5)
+            else:                    # keep
+                return current_nice  # nothing to do
+
+            if new_nice == current_nice:
+                return current_nice  # no change needed
+
+            # ── Apply the change ──────────────────────────────────────────────
+            if sys.platform == "win32":
+                # Windows uses priority CLASS constants, not integer nice values.
+                # Map our 3-tier action to Windows priority classes:
+                #   increase_priority → ABOVE_NORMAL_PRIORITY_CLASS
+                #   decrease_priority → BELOW_NORMAL_PRIORITY_CLASS
+                if action_id == 0:
+                    proc.nice(psutil.ABOVE_NORMAL_PRIORITY_CLASS)
+                elif action_id == 1:
+                    proc.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
+            else:
+                # Linux / macOS: integer nice values work directly
+                proc.nice(new_nice)
+
             return new_nice
-        except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-            # AccessDenied is common for system processes — just skip them
+
+        except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
+            # AccessDenied → system/protected process, skip silently
+            # OSError      → catches WinError 87 and similar OS-level errors
             return current_nice
 
     # ── Main training step ───────────────────────────────────────────────────
