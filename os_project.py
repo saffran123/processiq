@@ -1,0 +1,1 @@
+print("OS project setup successful")

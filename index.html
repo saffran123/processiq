@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RL OS Scheduler — Live Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  /* ── FONT & RESET ─────────────────────────────────────────── */
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;500;700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #090e14;
+    --surface:   #0d1520;
+    --border:    #1a2d44;
+    --accent:    #00e5ff;
+    --green:     #00ff88;
+    --yellow:    #ffd600;
+    --red:       #ff3d5a;
+    --orange:    #ff7043;
+    --text:      #c8d8e8;
+    --muted:     #4a6180;
+    --mono:      'Share Tech Mono', monospace;
+    --sans:      'Barlow', sans-serif;
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); }
+
+  /* ── SCANLINE OVERLAY ─────────────────────────────────────── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; pointer-events: none; z-index: 9999;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,.08) 2px, rgba(0,0,0,.08) 4px);
+  }
+
+  /* ── HEADER ───────────────────────────────────────────────── */
+  header {
+    display: flex; align-items: center; gap: 1.5rem;
+    padding: 1rem 2rem;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(90deg, #0d1a2a 0%, #090e14 100%);
+  }
+  .logo-mark {
+    width: 40px; height: 40px; border: 2px solid var(--accent);
+    display: grid; place-items: center; font-family: var(--mono);
+    color: var(--accent); font-size: .85rem; letter-spacing: .1em;
+    position: relative;
+  }
+  .logo-mark::before {
+    content: ''; position: absolute; inset: 3px;
+    border: 1px solid var(--accent); opacity: .4;
+  }
+  h1 { font-family: var(--mono); font-size: 1rem; color: var(--accent); letter-spacing: .15em; text-transform: uppercase; }
+  h1 span { color: var(--muted); font-size: .75rem; display: block; letter-spacing: .08em; margin-top: .15rem; }
+  .header-right { margin-left: auto; display: flex; gap: 2rem; align-items: center; }
+  .stat-pill { font-family: var(--mono); font-size: .75rem; color: var(--muted); }
+  .stat-pill strong { color: var(--green); font-size: 1rem; }
+  #status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(0,255,136,.6); } 50% { box-shadow: 0 0 0 6px rgba(0,255,136,0); } }
+
+  /* ── LAYOUT ───────────────────────────────────────────────── */
+  .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: auto auto auto auto; gap: 1px; background: var(--border); padding: 0; }
+
+  .panel {
+    background: var(--surface); padding: 1.25rem 1.5rem;
+    position: relative; overflow: hidden;
+  }
+  .panel::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--accent) 0%, transparent 60%);
+  }
+  .panel-title {
+    font-family: var(--mono); font-size: .7rem; color: var(--accent);
+    text-transform: uppercase; letter-spacing: .2em; margin-bottom: 1rem;
+    display: flex; align-items: center; gap: .5rem;
+  }
+  .panel-title::before { content: '▸'; opacity: .6; }
+
+  /* colspan utilities */
+  .col-2 { grid-column: span 2; }
+  .col-3 { grid-column: span 3; }
+
+  /* ── GAUGE CARDS ──────────────────────────────────────────── */
+  .gauges { display: flex; gap: 2rem; align-items: center; }
+  .gauge-wrap { display: flex; flex-direction: column; align-items: center; gap: .4rem; }
+  .gauge-value {
+    font-family: var(--mono); font-size: 2.4rem; line-height: 1;
+    color: var(--accent); transition: color .4s;
+  }
+  .gauge-value.warn  { color: var(--yellow); }
+  .gauge-value.crit  { color: var(--red); }
+  .gauge-label { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .15em; }
+  .gauge-bar { width: 100px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .gauge-fill { height: 100%; background: var(--accent); transition: width .5s, background .4s; border-radius: 2px; }
+  .gauge-fill.warn { background: var(--yellow); }
+  .gauge-fill.crit { background: var(--red); }
+
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem 1.5rem; }
+  .info-row { display: flex; justify-content: space-between; font-size: .8rem; padding: .3rem 0; border-bottom: 1px solid var(--border); }
+  .info-row .k { color: var(--muted); }
+  .info-row .v { color: var(--text); font-family: var(--mono); }
+
+  /* ── PROCESS TABLE ────────────────────────────────────────── */
+  table { width: 100%; border-collapse: collapse; font-size: .78rem; font-family: var(--mono); }
+  thead tr { border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); text-align: left; padding: .3rem .5rem; font-weight: 400; letter-spacing: .1em; font-size: .67rem; }
+  td { padding: .3rem .5rem; border-bottom: 1px solid rgba(26,45,68,.5); white-space: nowrap; }
+  tbody tr:hover { background: rgba(0,229,255,.04); }
+  .cpu-bar-cell { width: 80px; }
+  .mini-bar { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .mini-fill { height: 100%; border-radius: 2px; background: var(--accent); transition: width .4s; }
+  .badge { display: inline-block; padding: .1rem .4rem; border-radius: 2px; font-size: .65rem; }
+  .badge-green  { background: rgba(0,255,136,.15); color: var(--green); }
+  .badge-yellow { background: rgba(255,214,0,.15); color: var(--yellow); }
+  .badge-red    { background: rgba(255,61,90,.15); color: var(--red); }
+  .badge-blue   { background: rgba(0,229,255,.15); color: var(--accent); }
+  .badge-muted  { background: rgba(74,97,128,.2); color: var(--muted); }
+
+  /* ── SCHEDULER DECISIONS ──────────────────────────────────── */
+  .decision-list { display: flex; flex-direction: column; gap: .5rem; max-height: 200px; overflow-y: auto; }
+  .decision-item { display: grid; grid-template-columns: 3rem 8rem 1fr 5rem; gap: .5rem; align-items: center; font-size: .75rem; font-family: var(--mono); padding: .4rem .5rem; background: rgba(0,229,255,.03); border-left: 2px solid transparent; }
+  .decision-item.inc { border-color: var(--green); }
+  .decision-item.dec { border-color: var(--red); }
+  .decision-item.keep { border-color: var(--muted); }
+  .decision-item .pid { color: var(--muted); }
+  .decision-item .pname { color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+  .decision-item .action { }
+  .decision-item .reward { text-align: right; }
+  .reward-pos { color: var(--green); }
+  .reward-neg { color: var(--red); }
+  .reward-zero { color: var(--muted); }
+
+  /* ── ANOMALY PANEL ────────────────────────────────────────── */
+  .anomaly-list { display: flex; flex-direction: column; gap: .4rem; max-height: 180px; overflow-y: auto; }
+  .anomaly-item { display: flex; gap: .75rem; align-items: flex-start; padding: .4rem .6rem; border-radius: 2px; font-size: .75rem; }
+  .anomaly-item.critical { background: rgba(255,61,90,.1); border-left: 2px solid var(--red); }
+  .anomaly-item.warning  { background: rgba(255,214,0,.08); border-left: 2px solid var(--yellow); }
+  .anomaly-item .a-time  { color: var(--muted); font-family: var(--mono); font-size: .65rem; white-space: nowrap; }
+  .anomaly-item .a-type  { font-family: var(--mono); }
+  .anomaly-item.critical .a-type { color: var(--red); }
+  .anomaly-item.warning  .a-type { color: var(--yellow); }
+  .anomaly-item .a-val   { margin-left: auto; font-family: var(--mono); font-size: .8rem; }
+  .no-anomaly { color: var(--green); font-family: var(--mono); font-size: .8rem; padding: .5rem 0; }
+
+  /* ── Q-TABLE ──────────────────────────────────────────────── */
+  .qtable-list { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .q-chip { font-family: var(--mono); font-size: .7rem; padding: .3rem .6rem; border-radius: 2px; border: 1px solid var(--border); background: rgba(255,255,255,.02); }
+  .q-chip .qs { color: var(--muted); }
+  .q-chip .qa { color: var(--accent); }
+  .q-chip .qv { margin-left: .3rem; }
+  .q-chip .qv.pos { color: var(--green); }
+  .q-chip .qv.neg { color: var(--red); }
+
+  /* ── EPISODE BADGE ────────────────────────────────────────── */
+  .ep-row { display: flex; gap: 1.5rem; margin-bottom: .8rem; align-items: center; }
+  .ep-val { font-family: var(--mono); color: var(--accent); font-size: 1.4rem; }
+  .ep-label { font-size: .65rem; color: var(--muted); text-transform: uppercase; letter-spacing: .15em; }
+  .eps-val { font-family: var(--mono); color: var(--yellow); font-size: 1.4rem; }
+
+  /* ── CHART ────────────────────────────────────────────────── */
+  .chart-wrap { position: relative; height: 200px; }
+
+  /* ── SCROLLBAR ────────────────────────────────────────────── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ── FOOTER ───────────────────────────────────────────────── */
+  footer { text-align: center; padding: .6rem; font-size: .65rem; color: var(--muted); font-family: var(--mono); border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-mark">RL</div>
+  <h1>OS Scheduler Monitor <span>Reinforcement Learning · Real-time Process Control · Anomaly Detection</span></h1>
+  <div class="header-right">
+    <div class="stat-pill">Status <strong id="hdr-status">LIVE</strong></div>
+    <div class="stat-pill">Time <strong id="hdr-time">--:--:--</strong></div>
+    <div id="status-dot"></div>
+  </div>
+</header>
+
+<div class="grid">
+
+  <!-- ── SYSTEM STATS ──────────────────────────────────── -->
+  <div class="panel">
+    <div class="panel-title">System Overview</div>
+    <div class="gauges">
+      <div class="gauge-wrap">
+        <div class="gauge-value" id="g-cpu">--%</div>
+        <div class="gauge-bar"><div class="gauge-fill" id="gb-cpu" style="width:0%"></div></div>
+        <div class="gauge-label">CPU Total</div>
+      </div>
+      <div class="gauge-wrap">
+        <div class="gauge-value" id="g-mem">--%</div>
+        <div class="gauge-bar"><div class="gauge-fill" id="gb-mem" style="width:0%"></div></div>
+        <div class="gauge-label">Memory</div>
+      </div>
+    </div>
+    <div style="margin-top:1rem" class="info-grid">
+      <div class="info-row"><span class="k">Mem Used</span><span class="v" id="mem-used">—</span></div>
+      <div class="info-row"><span class="k">Mem Total</span><span class="v" id="mem-total">—</span></div>
+    </div>
+  </div>
+
+  <!-- ── EPISODE / EPSILON ─────────────────────────────── -->
+  <div class="panel">
+    <div class="panel-title">Q-Learning Agent</div>
+    <div class="ep-row">
+      <div>
+        <div class="ep-val" id="ep-num">0</div>
+        <div class="ep-label">Episodes Run</div>
+      </div>
+      <div>
+        <div class="eps-val" id="ep-eps">0.200</div>
+        <div class="ep-label">Epsilon (ε)</div>
+      </div>
+    </div>
+    <div class="info-row"><span class="k">α Learning Rate</span><span class="v">0.100</span></div>
+    <div class="info-row"><span class="k">γ Discount</span><span class="v">0.900</span></div>
+    <div class="info-row"><span class="k">Policy</span><span class="v">ε-Greedy</span></div>
+  </div>
+
+  <!-- ── ANOMALY STATS ──────────────────────────────────── -->
+  <div class="panel">
+    <div class="panel-title">Anomaly Stats</div>
+    <div class="info-grid">
+      <div class="info-row"><span class="k">CPU Mean</span><span class="v" id="an-cpu-mean">—</span></div>
+      <div class="info-row"><span class="k">CPU Std</span><span class="v" id="an-cpu-std">—</span></div>
+      <div class="info-row"><span class="k">Mem Mean</span><span class="v" id="an-mem-mean">—</span></div>
+      <div class="info-row"><span class="k">Mem Std</span><span class="v" id="an-mem-std">—</span></div>
+      <div class="info-row"><span class="k">Samples</span><span class="v" id="an-samples">—</span></div>
+      <div class="info-row"><span class="k">Z Threshold</span><span class="v">2.0 σ</span></div>
+    </div>
+  </div>
+
+  <!-- ── PROCESS TABLE ─────────────────────────────────── -->
+  <div class="panel col-2">
+    <div class="panel-title">Top Processes</div>
+    <div style="overflow-x:auto; max-height:220px; overflow-y:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>PID</th>
+            <th>Name</th>
+            <th>CPU %</th>
+            <th></th>
+            <th>MEM %</th>
+            <th>Nice</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="proc-tbody">
+          <tr><td colspan="7" style="color:var(--muted);padding:.8rem .5rem">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── ACTIVE ANOMALIES ───────────────────────────────── -->
+  <div class="panel">
+    <div class="panel-title">Active Alerts</div>
+    <div class="anomaly-list" id="active-anomalies">
+      <div class="no-anomaly">✓ No anomalies detected</div>
+    </div>
+  </div>
+
+  <!-- ── CPU CHART ─────────────────────────────────────── -->
+  <div class="panel col-2">
+    <div class="panel-title">CPU Usage — Before vs After Optimization</div>
+    <div class="chart-wrap">
+      <canvas id="cpuChart"></canvas>
+    </div>
+  </div>
+
+  <!-- ── SCHEDULER DECISIONS ───────────────────────────── -->
+  <div class="panel">
+    <div class="panel-title">Scheduler Decisions</div>
+    <div class="decision-list" id="decisions">
+      <div style="color:var(--muted);font-size:.75rem;font-family:var(--mono)">Waiting for first episode…</div>
+    </div>
+  </div>
+
+  <!-- ── Q-TABLE ────────────────────────────────────────── -->
+  <div class="panel col-2">
+    <div class="panel-title">Q-Table (Top 20 Entries)</div>
+    <div class="qtable-list" id="qtable"></div>
+  </div>
+
+  <!-- ── ANOMALY LOG ────────────────────────────────────── -->
+  <div class="panel">
+    <div class="panel-title">Anomaly History</div>
+    <div class="anomaly-list" id="anomaly-log">
+      <div class="no-anomaly">✓ Log is empty</div>
+    </div>
+  </div>
+
+</div>
+
+<footer>RL-Based OS Scheduler &nbsp;·&nbsp; Q-Learning + psutil + Flask &nbsp;·&nbsp; Ubuntu Compatible &nbsp;·&nbsp; Refreshes every 5 s</footer>
+
+<script>
+// ── CHART SETUP ────────────────────────────────────────────────────────────
+const ctx = document.getElementById('cpuChart').getContext('2d');
+const cpuChart = new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [
+      {
+        label: 'CPU Before (raw)',
+        data: [],
+        borderColor: '#ff3d5a',
+        backgroundColor: 'rgba(255,61,90,.08)',
+        borderWidth: 1.5,
+        tension: 0.4,
+        pointRadius: 2,
+        fill: true
+      },
+      {
+        label: 'CPU After (optimized)',
+        data: [],
+        borderColor: '#00ff88',
+        backgroundColor: 'rgba(0,255,136,.05)',
+        borderWidth: 1.5,
+        tension: 0.4,
+        pointRadius: 2,
+        fill: true
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 400 },
+    plugins: {
+      legend: { labels: { color: '#c8d8e8', font: { family: 'Share Tech Mono', size: 11 }, boxWidth: 12 } }
+    },
+    scales: {
+      x: { ticks: { color: '#4a6180', font: { size: 10 } }, grid: { color: '#1a2d44' } },
+      y: {
+        min: 0, max: 100,
+        ticks: { color: '#4a6180', font: { size: 10 }, callback: v => v + '%' },
+        grid: { color: '#1a2d44' }
+      }
+    }
+  }
+});
+
+// ── HELPERS ────────────────────────────────────────────────────────────────
+function colorClass(pct) {
+  if (pct > 80) return 'crit';
+  if (pct > 50) return 'warn';
+  return '';
+}
+function badgeAction(action) {
+  if (action.includes('increase')) return '<span class="badge badge-green">↑ PRIO+</span>';
+  if (action.includes('decrease')) return '<span class="badge badge-red">↓ PRIO−</span>';
+  return '<span class="badge badge-muted">= KEEP</span>';
+}
+function decisionClass(action) {
+  if (action.includes('increase')) return 'inc';
+  if (action.includes('decrease')) return 'dec';
+  return 'keep';
+}
+function rewardSpan(r) {
+  const cls = r > 0.01 ? 'pos' : r < -0.01 ? 'neg' : 'zero';
+  const sign = r > 0 ? '+' : '';
+  return `<span class="reward-${cls}">${sign}${r.toFixed(3)}</span>`;
+}
+
+// ── POLLING ────────────────────────────────────────────────────────────────
+async function fetchJSON(url) {
+  try { return await (await fetch(url)).json(); }
+  catch(e) { return null; }
+}
+
+async function refreshAll() {
+  document.getElementById('hdr-time').textContent = new Date().toLocaleTimeString();
+
+  const [stats, procs, decisions, anomalies, chart, qtable] = await Promise.all([
+    fetchJSON('/api/stats'),
+    fetchJSON('/api/processes'),
+    fetchJSON('/api/decisions'),
+    fetchJSON('/api/anomalies'),
+    fetchJSON('/api/chart'),
+    fetchJSON('/api/qtable')
+  ]);
+
+  // ── System Stats
+  if (stats) {
+    const cpu = stats.cpu_total;
+    const mem = stats.memory_total;
+    const gc = colorClass(cpu), gm = colorClass(mem);
+
+    document.getElementById('g-cpu').textContent  = cpu.toFixed(1) + '%';
+    document.getElementById('g-mem').textContent  = mem.toFixed(1) + '%';
+    document.getElementById('gb-cpu').style.width = cpu + '%';
+    document.getElementById('gb-mem').style.width = mem + '%';
+    document.getElementById('g-cpu').className  = 'gauge-value ' + gc;
+    document.getElementById('gb-cpu').className = 'gauge-fill ' + gc;
+    document.getElementById('g-mem').className  = 'gauge-value ' + gm;
+    document.getElementById('gb-mem').className = 'gauge-fill ' + gm;
+    document.getElementById('mem-used').textContent  = stats.memory_used_mb + ' MB';
+    document.getElementById('mem-total').textContent = stats.memory_total_mb + ' MB';
+  }
+
+  // ── Q-Agent
+  if (decisions) {
+    document.getElementById('ep-num').textContent = decisions.episode;
+    document.getElementById('ep-eps').textContent = decisions.epsilon.toFixed(4);
+  }
+
+  // ── Processes
+  if (procs && procs.length) {
+    const rows = procs.map(p => {
+      const cpuW = Math.min(p.cpu_percent, 100);
+      const niceColor = p.nice < 0 ? 'var(--green)' : p.nice > 5 ? 'var(--muted)' : 'var(--text)';
+      return `<tr>
+        <td>${p.pid}</td>
+        <td>${p.name.substring(0,22)}</td>
+        <td style="color:${cpuW>70?'var(--red)':cpuW>40?'var(--yellow)':'var(--text)'}">${p.cpu_percent.toFixed(1)}%</td>
+        <td class="cpu-bar-cell"><div class="mini-bar"><div class="mini-fill" style="width:${cpuW}%"></div></div></td>
+        <td>${p.memory_percent.toFixed(1)}%</td>
+        <td style="color:${niceColor}">${p.nice}</td>
+        <td><span class="badge ${p.status==='running'?'badge-green':'badge-muted'}">${p.status}</span></td>
+      </tr>`;
+    }).join('');
+    document.getElementById('proc-tbody').innerHTML = rows;
+  }
+
+  // ── Decisions
+  if (decisions && decisions.decisions && decisions.decisions.length) {
+    const html = decisions.decisions.map(d => `
+      <div class="decision-item ${decisionClass(d.action)}">
+        <span class="pid">${d.pid}</span>
+        <span class="pname">${d.name.substring(0,14)}</span>
+        <span class="action">${badgeAction(d.action)}</span>
+        <span class="reward">${rewardSpan(d.reward)}</span>
+      </div>`).join('');
+    document.getElementById('decisions').innerHTML = html;
+  }
+
+  // ── Anomalies (active)
+  if (anomalies) {
+    const active = anomalies.active || [];
+    const aEl = document.getElementById('active-anomalies');
+    if (active.length === 0) {
+      aEl.innerHTML = '<div class="no-anomaly">✓ No anomalies detected</div>';
+    } else {
+      aEl.innerHTML = active.map(a => `
+        <div class="anomaly-item ${a.severity}">
+          <span class="a-time">${a.timestamp}</span>
+          <span class="a-type">${a.type}</span>
+          <span class="a-val">${a.value}%</span>
+        </div>`).join('');
+    }
+
+    // Anomaly stats
+    const s = anomalies.stats || {};
+    document.getElementById('an-cpu-mean').textContent  = (s.cpu_mean ?? '—') + '%';
+    document.getElementById('an-cpu-std').textContent   = (s.cpu_std  ?? '—') + '%';
+    document.getElementById('an-mem-mean').textContent  = (s.mem_mean ?? '—') + '%';
+    document.getElementById('an-mem-std').textContent   = (s.mem_std  ?? '—') + '%';
+    document.getElementById('an-samples').textContent   = s.samples ?? '—';
+
+    // Anomaly log
+    const log = anomalies.log || [];
+    const lEl = document.getElementById('anomaly-log');
+    lEl.innerHTML = log.length === 0
+      ? '<div class="no-anomaly">✓ Log is empty</div>'
+      : log.map(a => `
+          <div class="anomaly-item ${a.severity}">
+            <span class="a-time">${a.timestamp}</span>
+            <span class="a-type">${a.type} — ${a.value}%</span>
+          </div>`).join('');
+  }
+
+  // ── Chart
+  if (chart && chart.labels) {
+    cpuChart.data.labels                 = chart.labels;
+    cpuChart.data.datasets[0].data       = chart.before;
+    cpuChart.data.datasets[1].data       = chart.after;
+    cpuChart.update('none');
+  }
+
+  // ── Q-table
+  if (qtable && qtable.length) {
+    const html = qtable.map(row => {
+      const vClass = row.q_value > 0 ? 'pos' : row.q_value < 0 ? 'neg' : '';
+      return `<div class="q-chip">
+        <span class="qs">${row.state}</span>
+        &nbsp;·&nbsp;
+        <span class="qa">${row.action.replace('_priority','')}</span>
+        <span class="qv ${vClass}">${row.q_value > 0 ? '+' : ''}${row.q_value}</span>
+      </div>`;
+    }).join('');
+    document.getElementById('qtable').innerHTML = html;
+  }
+}
+
+// Initial call + interval
+refreshAll();
+setInterval(refreshAll, 5000);
+</script>
+</body>
+</html>
