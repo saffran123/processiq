@@ -163,7 +163,3 @@ Flask serves a live dashboard. Browser polls 6 JSON endpoints every 5 seconds:
 - The scheduler only touches the **top 5 CPU-consuming processes** to avoid affecting system stability.
 - System processes (PID < 100) may raise `AccessDenied` — these are silently skipped.
 - The Q-table is saved as `q_table.pkl` and reloaded on restart, so learning persists.
-
----
-
-*Built with ❤️ for the OS course project.*
