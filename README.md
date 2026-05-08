@@ -5,7 +5,7 @@
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 os_scheduler_project/
@@ -22,7 +22,7 @@ os_scheduler_project/
 
 ---
 
-## ⚙️ System Requirements
+## System Requirements
 
 - Ubuntu 20.04 / 22.04 (or any modern Linux)
 - Python 3.8+
@@ -30,7 +30,7 @@ os_scheduler_project/
 
 ---
 
-## 🚀 Setup Instructions
+## Setup Instructions
 
 ### Step 1 — Clone or create the project folder
 
@@ -55,7 +55,7 @@ pip install -r requirements.txt
 
 ---
 
-## ▶️ How to Run
+## How to Run
 
 ### Option A — Run the full dashboard (recommended)
 
@@ -81,7 +81,7 @@ python anomaly.py
 
 ---
 
-## 📦 requirements.txt
+## requirements.txt
 
 ```
 flask>=2.3.0
@@ -95,7 +95,7 @@ pip install flask psutil
 
 ---
 
-## 🧠 How It Works
+## How It Works
 
 ### 1. monitor.py
 Uses `psutil` to collect:
@@ -130,23 +130,6 @@ Flask serves a live dashboard. Browser polls 6 JSON endpoints every 5 seconds:
 
 ---
 
-## 📅 13-Day Work Plan
-
-| Days  | Task | Student |
-|-------|------|---------|
-| 1–2   | Setup, `monitor.py` | Student 1 |
-| 3–4   | `scheduler.py` (Q-table, actions) | Student 2 |
-| 5–6   | `anomaly.py` (Z-score logic) | Student 1 |
-| 7–8   | `app.py` Flask routes + threading | Student 2 |
-| 9–10  | `index.html` dashboard + Chart.js | Both |
-| 11    | Integration testing on Ubuntu | Both |
-| 12    | Viva prep + comments review | Both |
-| 13    | Final demo & documentation | Both |
-
----
-
-## 🎤 Viva Talking Points
-
 1. **Why Q-learning?** — Tabular, no neural networks, easy to explain and debug.
 2. **State space** — Discretizing CPU/mem into 3 bins each = 9 possible states. Small Q-table.
 3. **Reward function** — Penalises high CPU/memory, rewards reductions.
@@ -157,7 +140,7 @@ Flask serves a live dashboard. Browser polls 6 JSON endpoints every 5 seconds:
 
 ---
 
-## ⚠️ Notes
+## Notes
 
 - On Ubuntu, changing a process to negative nice requires `sudo`.
 - The scheduler only touches the **top 5 CPU-consuming processes** to avoid affecting system stability.
