@@ -1,6 +1,6 @@
 # RL-Based OS Scheduler with Real-Time Process Monitoring & Anomaly Detection
 
-> **College OS Project — 2 Students · 13-Day Plan**
+> **College OS Project**
 > Python · Q-Learning · psutil · Flask · Ubuntu 20.04 / 22.04
 
 ---
